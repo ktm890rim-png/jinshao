@@ -101,7 +101,7 @@ export async function loadM1(): Promise<Bar[] | null> {
 }
 
 export async function loadMarket(): Promise<MarketPayload> {
-  if (cache && Date.now() - cache.at < 45_000 && cache.data.ok) return cache.data;
+  if (cache && Date.now() - cache.at < 15_000 && cache.data.ok) return cache.data;
   try {
     const [yahoo, spotRes] = await Promise.all([
       yahooBars(),
@@ -330,7 +330,8 @@ export const fetchChart = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<{ ok: true; bars: Bar[] } | { ok: false; error: string }> => {
     const hit = chartCache.get(data.minutes);
-    if (hit && Date.now() - hit.at < 40_000) return { ok: true, bars: hit.bars };
+    const ttl = data.minutes === 1 ? 8_000 : data.minutes === 60 ? 45_000 : 15_000;
+    if (hit && Date.now() - hit.at < ttl) return { ok: true, bars: hit.bars };
     const spec = data.minutes === 1 ? { interval: "1m", range: "1d" } : data.minutes === 60 ? { interval: "60m", range: "3mo" } : { interval: "1d", range: "1y" };
     const bars = await yahooSeries(spec.interval, spec.range);
     if (!bars) return { ok: false, error: "这个周期的 K 线没接上" };

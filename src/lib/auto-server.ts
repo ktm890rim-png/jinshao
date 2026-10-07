@@ -37,6 +37,9 @@ type Job = {
   be: boolean;
   usedBar: number;
   plan: ScalpPlan;
+  lossTimes: number[];
+  lastSignal: string;
+  logs: { at: number; text: string }[];
 };
 
 const job: Job = {
@@ -62,6 +65,9 @@ const job: Job = {
   be: false,
   usedBar: 0,
   plan: cleanPlan(DEFAULT_PLAN),
+  lossTimes: [],
+  lastSignal: "",
+  logs: [],
 };
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -78,7 +84,33 @@ export function autoView() {
     note: job.note,
     fills: job.fills.slice(0, 30),
     protect: job.protect,
+    tripped: Date.now() < job.pauseUntil,
+    logs: job.logs.slice(0, 8),
   };
+}
+
+function remember(text: string) {
+  job.note = text;
+  job.logs = [{ at: Date.now(), text }, ...job.logs].slice(0, 20);
+}
+
+function markLoss(net: number) {
+  job.lossStreak += 1;
+  job.dayLoss = Number((job.dayLoss + Math.abs(net)).toFixed(2));
+  const now = Date.now();
+  job.lossTimes = [...job.lossTimes.filter((at) => now - at < 5 * 60_000), now];
+  const dayStop = job.plan.dayStop > 0 ? job.plan.dayStop : 3;
+  if (job.dayLoss >= dayStop) {
+    job.pauseUntil = now + 12 * 60 * 60_000;
+    remember(`今天已亏 ${job.dayLoss} 美元，停止开新仓。`);
+  } else if (job.lossTimes.length >= 3) {
+    job.pauseUntil = now + 30 * 60_000;
+    remember("熔断：5 分钟里亏了 3 笔，停 30 分钟。");
+  } else if (job.lossStreak >= (job.plan.lossPause > 0 ? job.plan.lossPause : 3)) {
+    const bars = job.plan.pauseBars > 0 ? job.plan.pauseBars : 3;
+    job.pauseUntil = now + bars * 60_000;
+    remember(`连亏 ${job.lossStreak} 笔，停 ${bars} 分钟。`);
+  }
 }
 
 async function tick() {
@@ -115,9 +147,9 @@ async function tick() {
           job.be = false;
           job.protect = false;
           job.lastAt = Date.now();
-          if (net < 0) job.lossStreak += 1;
+          if (net < 0) markLoss(net);
           else job.lossStreak = 0;
-          job.note = net > 0 ? `锁住约 ${net} 美元。` : "回到成本已平，只亏手续费。";
+          if (Date.now() >= job.pauseUntil) remember(net > 0 ? `锁住约 ${net} 美元。` : "回到成本已平，只亏手续费。");
           return;
         }
       }
@@ -132,24 +164,19 @@ async function tick() {
         job.be = false;
         job.protect = false;
         job.lastAt = Date.now();
-        job.note = hitTp ? `止盈到手约 ${net} 美元` : `止损约 ${net} 美元`;
         const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
         if (job.day !== today) {
           job.day = today;
           job.dayLoss = 0;
+          job.lossTimes = [];
         }
         if (net < 0) {
-          job.lossStreak += 1;
-          job.dayLoss = Number((job.dayLoss + Math.abs(net)).toFixed(2));
-          if (job.dayLoss >= (job.plan.dayStop > 0 ? job.plan.dayStop : 3)) {
-            job.pauseUntil = Date.now() + 12 * 60 * 60_000;
-            job.note = `今天已亏 ${job.dayLoss} 美元，停止开新仓。`;
-          } else if (job.lossStreak >= (job.plan.lossPause > 0 ? job.plan.lossPause : 3)) {
-            const bars = job.plan.pauseBars > 0 ? job.plan.pauseBars : 3;
-            job.pauseUntil = Date.now() + bars * 60_000;
-            job.note = `连亏 ${job.lossStreak} 笔，停 ${bars} 分钟。`;
-          }
-        } else job.lossStreak = 0;
+          remember(`止损约 ${net} 美元`);
+          markLoss(net);
+        } else {
+          job.lossStreak = 0;
+          remember(`止盈到手约 ${net} 美元`);
+        }
         return;
       }
     }
@@ -159,7 +186,7 @@ async function tick() {
     }
     if (job.held || Date.now() - job.lastAt < 2_000) return;
     if (Date.now() < job.pauseUntil) {
-      job.note = job.dayLoss >= (job.plan.dayStop > 0 ? job.plan.dayStop : 3) ? `今天已亏 ${job.dayLoss} 美元，不再开。` : "连亏暂停中，先不开。";
+      if (!job.note.includes("熔断") && !job.note.includes("今天已亏")) job.note = "连亏暂停中，先不开。";
       return;
     }
     const news = newsLane(Date.now());
@@ -195,10 +222,25 @@ async function tick() {
       takeProfit: (price + (call.side === "buy" ? call.tp : -call.tp)).toFixed(2),
       stopLoss: (price + (call.side === "buy" ? -call.sl : call.sl)).toFixed(2),
     };
+    const signalKey = `${call.side}:${barT || price.toFixed(2)}`;
+    if (job.lastSignal === signalKey && Date.now() - job.lastAt < 3_000) {
+      job.note = "防重：3 秒内同一信号不下第二单。";
+      return;
+    }
+    if (!(Number(plan.stopLoss) > 0) || !(Number(plan.takeProfit) > 0)) {
+      job.note = "止损没算出来，这一单不下。";
+      return;
+    }
     const placed = await submitCfdOrder({ ...creds, side: call.side, takeProfit: plan.takeProfit, stopLoss: plan.stopLoss });
     job.lastAt = Date.now();
+    job.lastSignal = signalKey;
     if (!placed.ok) {
-      job.note = placed.text;
+      remember(placed.text);
+      return;
+    }
+    if (placed.text.includes("没带")) {
+      await submitCfdClose(creds);
+      remember("止损没挂上，已把这一单平掉。");
       return;
     }
     job.held = call.side;
@@ -209,7 +251,7 @@ async function tick() {
     job.protect = false;
     job.be = false;
     job.usedBar = barT;
-    job.note = `${call.reasons.join("·")}，已${call.side === "buy" ? "买入" : "卖出"} 0.01。止盈 ${plan.tp}，止损 ${plan.sl}。浮盈 ${job.plan.trailArm} 收到成本，之后每 ${job.plan.trailStep} 往前推。`;
+    remember(`${call.reasons.join("·")}，已${call.side === "buy" ? "买入" : "卖出"} 0.01。止盈 ${plan.tp}，止损 ${plan.sl}。浮盈 ${job.plan.trailArm} 收到成本，之后每 ${job.plan.trailStep} 往前推。`);
     job.fills = [{ at: Date.now(), side: call.side, entry: price, exit: null, pnl: null, points: 1, text: "开仓" }, ...job.fills].slice(0, 30);
   } catch {
     job.note = "这一轮没送出去，自动还开着。";
@@ -250,9 +292,30 @@ export const startAuto = createServerFn({ method: "POST" })
 export const stopAuto = createServerFn({ method: "POST" }).handler(async () => {
   job.on = false;
   job.protect = true;
-  job.note = "自动停了。";
+  remember("自动停了。");
   if (timer) clearInterval(timer);
   timer = null;
+  return autoView();
+});
+
+export const emergencyStop = createServerFn({ method: "POST" }).handler(async () => {
+  job.on = false;
+  job.protect = true;
+  if (timer) clearInterval(timer);
+  timer = null;
+  if (job.key && job.held) {
+    const closed = await submitCfdClose({ key: job.key, secret: job.secret, passphrase: job.passphrase, symbol: job.symbol });
+    if (closed.ok) {
+      job.held = null;
+      job.entry = null;
+      job.tp = null;
+      job.sl = null;
+      job.be = false;
+      remember("应急停止。持仓已平，不再开新仓。");
+      return autoView();
+    }
+  }
+  remember("应急停止。不再开新仓。");
   return autoView();
 });
 

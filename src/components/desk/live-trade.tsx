@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { autoStatus, releaseAuto, stopAuto } from "@/lib/auto-server";
+import { autoStatus, emergencyStop, releaseAuto, stopAuto } from "@/lib/auto-server";
 
 type View = Awaited<ReturnType<typeof autoStatus>>;
 
@@ -30,7 +30,10 @@ export function LiveTrade({ price }: { price: number | null }) {
       <div className="rounded-2xl bg-panel px-4 py-4 shadow-panel">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-gold">链接交易中</p>
-          <button type="button" onClick={() => void stopAuto().then(setLive)} className="h-10 rounded-full bg-cinnabar px-4 text-sm text-ink">关闭自动</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => void emergencyStop().then(setLive)} className="h-10 rounded-full bg-cinnabar px-4 text-sm text-ink">应急停止</button>
+            <button type="button" onClick={() => void stopAuto().then(setLive)} className="h-10 rounded-full bg-ink px-4 text-sm text-cream">关闭自动</button>
+          </div>
         </div>
         <p className="mt-2 text-sm text-cream">
           {live.held === "buy" ? "多单" : live.held === "sell" ? "空单" : "空仓"}
@@ -39,7 +42,15 @@ export function LiveTrade({ price }: { price: number | null }) {
         </p>
         <p className="mt-1 text-xs leading-5 text-cream-dim">{live.note}</p>
         {live.note.includes("时间") ? <p className="mt-1 text-xs leading-5 text-cream">自动没关。这一笔被拒了，仓还是空的，下一轮会再试。</p> : null}
-        <p className="mt-1 text-xs leading-5 text-cream-dim">顺势：回踩均线再走，或沿着均线走。反转：扫掉前高前低再收回，而且不逆着大方向。浮盈 0.3 收到成本，之后每 0.2 往前推。</p>
+        <p className="mt-1 text-xs leading-5 text-cream-dim">同一信号 3 秒内不下第二单。5 分钟亏 3 笔就熔断。止损没挂上就平掉。浮盈到了把止损往前推。</p>
+        {live.tripped ? <p className="mt-1 text-xs text-cinnabar">熔断中，这段时间不再开新仓。</p> : null}
+        {live.logs.length ? (
+          <ul className="mt-2 space-y-1">
+            {live.logs.slice(0, 4).map((row) => (
+              <li key={row.at} className="text-xs leading-5 text-cream-dim">{new Date(row.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} · {row.text}</li>
+            ))}
+          </ul>
+        ) : null}
         {live.protect ? (
           <button type="button" onClick={() => void releaseAuto().then(setLive)} className="mt-3 h-10 rounded-full bg-gold px-4 text-sm text-ink">
             原来的仓我已处理，按新信号做
