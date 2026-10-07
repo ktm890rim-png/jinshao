@@ -222,6 +222,14 @@ async function tick() {
       takeProfit: (price + (call.side === "buy" ? call.tp : -call.tp)).toFixed(2),
       stopLoss: (price + (call.side === "buy" ? -call.sl : call.sl)).toFixed(2),
     };
+    if (call.sl > 0.8) {
+      job.note = "单笔止损超过 0.8 美元，这一单不下。";
+      return;
+    }
+    if (job.held) {
+      job.note = "已经有一单，不再加仓。";
+      return;
+    }
     const signalKey = `${call.side}:${barT || price.toFixed(2)}`;
     if (job.lastSignal === signalKey && Date.now() - job.lastAt < 3_000) {
       job.note = "防重：3 秒内同一信号不下第二单。";

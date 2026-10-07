@@ -1070,13 +1070,21 @@ function Mine({
 
 function LibraryView({ busy, setBusy, note }: { busy: string | null; setBusy: (id: string | null) => void; note: string }) {
   const indicators = useDesk((s) => s.indicators);
+  const [q, setQ] = useState("");
+  const query = q.trim();
+  const shown = indicators.filter((ind) => {
+    if (!query) return true;
+    const blob = `${ind.name} ${ind.thesis} ${ind.timeframe} ${ind.side}`.toLowerCase();
+    return blob.includes(query.toLowerCase());
+  });
   return (
     <div className="space-y-3">
       <p className="text-sm text-cream-dim">武装之后才参与盯盘。种子和社区草稿都在这台设备上。</p>
+      <input value={q} onChange={(event) => setQ(event.target.value)} placeholder="搜名称、周期、多空" className="h-11 w-full rounded-full border border-line bg-ink px-4 text-sm text-cream outline-none" />
       {note ? <p className="text-sm text-gold">{note}</p> : null}
-      {indicators.map((ind) => (
+      {shown.length ? shown.map((ind) => (
         <IndicatorCard key={ind.id} ind={ind} busy={busy === ind.id} setBusy={setBusy} />
-      ))}
+      )) : <p className="text-sm text-cream-dim">没有对上的指标。</p>}
     </div>
   );
 }

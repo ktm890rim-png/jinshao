@@ -251,28 +251,42 @@ export const fetchSpot = createServerFn({ method: "POST" }).handler(async (): Pr
       note: !gold.ok ? "这拍没接上" : goldAge != null && goldAge > 15_000 ? `这口慢 ${Math.round(goldAge / 1000)} 秒` : "对照用，更新没那么勤",
     },
   ];
-  const primary = swiss.ok ? swiss.value : null;
-  const book: QuoteBook = primary
+  let bid = swiss.ok ? swiss.value.bid : null;
+  let ask = swiss.ok ? swiss.value.ask : null;
+  let mid = swiss.ok ? swiss.value.mid : gold.ok ? gold.value.mid : null;
+  let source = swiss.ok ? "瑞士报价" : gold.ok ? "Gold API" : "";
+  if (swiss.ok && gold.ok) {
+    const gap = Math.abs(swiss.value.mid - gold.value.mid);
+    if (gap <= 1.5) {
+      const fused = swiss.value.mid * 0.75 + gold.value.mid * 0.25;
+      const shift = fused - swiss.value.mid;
+      bid = swiss.value.bid + shift;
+      ask = swiss.value.ask + shift;
+      mid = fused;
+      source = "两源融合";
+    } else source = "两源差太远，用瑞士";
+  }
+  const book: QuoteBook = mid != null
     ? {
         ok: true,
-        mid: primary.mid,
-        bid: primary.bid,
-        ask: primary.ask,
-        source: "瑞士报价",
-        latencyMs: swiss.ms,
+        mid,
+        bid,
+        ask,
+        source,
+        latencyMs: swiss.ok ? swiss.ms : gold.ms,
         at: now,
         sources,
       }
     : {
-        ok: gold.ok,
-        mid: gold.ok ? gold.value.mid : null,
+        ok: false,
+        mid: null,
         bid: null,
         ask: null,
-        source: gold.ok ? "Gold API" : "",
+        source: "",
         latencyMs: gold.ms,
         at: now,
         sources,
-        error: gold.ok ? undefined : "瑞士报价这拍没接上",
+        error: "报价这拍没接上",
       };
   bookCache = { at: now, book };
   return book;

@@ -5,6 +5,7 @@ type View = Awaited<ReturnType<typeof autoStatus>>;
 
 export function LiveTrade({ price }: { price: number | null }) {
   const [live, setLive] = useState<View | null>(null);
+  const [pick, setPick] = useState<"all" | "win" | "loss">("all");
 
   useEffect(() => {
     let gone = false;
@@ -56,8 +57,13 @@ export function LiveTrade({ price }: { price: number | null }) {
             原来的仓我已处理，按新信号做
           </button>
         ) : null}
+        <div className="mt-3 flex gap-2">
+          {([["all", "全部"], ["win", "盈利"], ["loss", "亏损"]] as const).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setPick(id)} className={"h-8 rounded-full px-3 text-xs " + (pick === id ? "bg-gold text-ink" : "bg-ink text-cream")}>{label}</button>
+          ))}
+        </div>
         <ul className="mt-3 space-y-2">
-          {live.fills.length ? live.fills.map((fill) => (
+          {live.fills.filter((fill) => pick === "all" || (pick === "win" ? (fill.pnl ?? 0) > 0 : (fill.pnl ?? 0) < 0)).length ? live.fills.filter((fill) => pick === "all" || (pick === "win" ? (fill.pnl ?? 0) > 0 : (fill.pnl ?? 0) < 0)).map((fill) => (
             <li key={fill.at} className="text-sm text-cream">
               {new Date(fill.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}
               {" · "}{fill.side === "buy" ? "多" : "空"} {fill.entry.toFixed(2)}
