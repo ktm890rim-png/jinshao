@@ -1,0 +1,1 @@
+{"trend":true,"reversal":true,"fast":8,"slow":21,"pull":0.2,"extend":1.2,"wick":0.35,"swing":12,"trendTp":0.45,"trendSl":0.4,"runTp":0.45,"runSl":0.4,"revTp":0.45,"revSl":0.4,"trailArm":0.3,"trailStep":0.2,"trailPush":0.2,"spike":3,"spread":0.5,"style":"auto","minHits":0,"volMult":0,"rangeMult":0,"closePct":0,"chopOff":false,"lossPause":0,"pauseBars":0,"dayStop":3}
