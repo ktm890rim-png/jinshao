@@ -32,10 +32,11 @@ import { Lab, type Prefs } from "./lab";
 import { LiveTrade } from "./live-trade";
 import { TerminalView } from "./terminal-view";
 import type { Note } from "@/lib/playbook";
+import { BacktestBoard, CommunityBoard, HomeBoard, SetupBoard } from "./platform";
 import { HedgeCard } from "./hedge-card";
 import { HookBox, MonitorBoard } from "./monitor";
 
-type Tab = "watch" | "terminal" | "command" | "flow" | "arch" | "link" | "mine" | "lib" | "judge" | "study" | "macro" | "lab";
+type Tab = "watch" | "terminal" | "command" | "flow" | "arch" | "link" | "mine" | "lib" | "judge" | "study" | "macro" | "lab" | "replay" | "setup" | "dig";
 
 function opText(op: Operand): string {
   if (op.type === "const") return String(op.value);
@@ -634,6 +635,14 @@ export function Desk() {
           <div className="lg:col-span-5">
             <ConfluenceBoard bars={market?.ok ? market.bars : []} price={book?.mid ?? (market?.ok ? market.spot : null)} study={study} />
           </div>
+        ) : tab === "replay" ? (
+          <div className="lg:col-span-5">
+            <BacktestBoard bars={market?.ok ? market.bars : []} />
+          </div>
+        ) : tab === "setup" ? (
+          <div className="lg:col-span-5">
+            <SetupBoard onOpen={setTab} />
+          </div>
         ) : tab === "terminal" ? (
           <div className="lg:col-span-5">
             <TerminalView
@@ -659,6 +668,7 @@ export function Desk() {
         ) : (
           <>
         <section className="space-y-4 lg:col-span-3">
+          {tab === "watch" ? <HomeBoard price={book?.mid ?? null} decision={decision} evals={evals} /> : null}
           {tab === "watch" ? <HedgeCard /> : null}
           <DecisionBoard
             decision={decision}
@@ -738,7 +748,8 @@ export function Desk() {
               <LinkBoard sources={book?.sources} />
             </div>
           )}
-          {tab === "mine" && (
+          {tab === "mine" && <CommunityBoard />}
+          {tab === "dig" && (
             <Mine
               topic={topic}
               leads={leads}
@@ -809,18 +820,11 @@ export function Desk() {
 
       <nav className="safe-nav fixed inset-x-0 bottom-0 z-20 border-t border-line bg-ink/95 px-2 pt-1 backdrop-blur">
         <div className="nav-scroll mx-auto flex max-w-5xl gap-1 overflow-x-auto">
-          <TabButton id="watch" tab={tab} setTab={setTab} icon={<Radio className="size-5" />} label="值班" />
-          <TabButton id="terminal" tab={tab} setTab={setTab} icon={<CandlestickChart className="size-5" />} label="终端" />
-          <TabButton id="command" tab={tab} setTab={setTab} icon={<Waypoints className="size-5" />} label="总控" />
-          <TabButton id="flow" tab={tab} setTab={setTab} icon={<Rows3 className="size-5" />} label="订单流" />
-          <TabButton id="arch" tab={tab} setTab={setTab} icon={<Workflow className="size-5" />} label="架构" />
-          <TabButton id="link" tab={tab} setTab={setTab} icon={<Cable className="size-5" />} label="接口" />
-          <TabButton id="mine" tab={tab} setTab={setTab} icon={<Search className="size-5" />} label="社区" />
+          <TabButton id="watch" tab={tab} setTab={setTab} icon={<Radio className="size-5" />} label="仪表盘" />
           <TabButton id="lib" tab={tab} setTab={setTab} icon={<Library className="size-5" />} label="指标库" />
-          <TabButton id="study" tab={tab} setTab={setTab} icon={<BookOpen className="size-5" />} label="研习" />
-          <TabButton id="macro" tab={tab} setTab={setTab} icon={<Calendar className="size-5" />} label="共振" />
-          <TabButton id="lab" tab={tab} setTab={setTab} icon={<Shield className="size-5" />} label="实验室" />
-          <TabButton id="judge" tab={tab} setTab={setTab} icon={<MessagesSquare className="size-5" />} label="研判" />
+          <TabButton id="mine" tab={tab} setTab={setTab} icon={<Search className="size-5" />} label="社区" />
+          <TabButton id="replay" tab={tab} setTab={setTab} icon={<BookOpen className="size-5" />} label="回测" />
+          <TabButton id="setup" tab={tab} setTab={setTab} icon={<Shield className="size-5" />} label="设置" />
         </div>
       </nav>
     </main>
@@ -1131,7 +1135,7 @@ function IndicatorCard({ ind, busy, setBusy }: { ind: Indicator; busy: boolean; 
         <div>
           <h3 className="text-base">{ind.name}</h3>
           <p className="mt-1 text-xs text-cream-dim">
-            {sideLabel(ind.side)} · {TF_LABEL[ind.timeframe]} · {ind.source === "github" ? "GitHub" : ind.source === "tradingview" ? "TradingView" : ind.source === "seed" ? "哨所" : "手贴"}
+            {sideLabel(ind.side)} · {TF_LABEL[ind.timeframe]} · {ind.source === "github" ? "GitHub" : ind.source === "tradingview" ? "TradingView" : ind.source === "seed" ? "哨所" : "手贴"} · {new Date(ind.updatedAt).toLocaleDateString("zh-CN")}
           </p>
         </div>
         <button type="button" role="switch" aria-checked={ind.armed} onClick={() => useDesk.getState().toggle(ind.id)} className={"h-11 shrink-0 rounded-full px-4 text-sm " + (ind.armed ? "bg-gold text-ink" : "bg-ink text-cream")}>
